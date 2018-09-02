@@ -1,0 +1,208 @@
+version: '2'
+
+networks:
+  byfn:
+
+services:
+  ca.org1.example.com:
+    image: hyperledger/fabric-ca:$ARCH-1.1.0
+    environment:
+      - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
+      - FABRIC_CA_SERVER_CA_NAME=ca.org1.example.com
+
+    ports:
+      - "7054:7054"
+    command: sh -c 'fabric-ca-server start --ca.certfile /etc/hyperledger/fabric-ca-server-config/ca.org1.example.com-cert.pem --ca.keyfile /etc/hyperledger/fabric-ca-server-config/de400939eac3b3b437ac50f5b40c2bedf671325186f8dc65ed91df7f2ce1b676_sk -b admin:adminpw -d'
+    volumes:
+      - ./crypto-config/peerOrganizations/org1.example.com/ca/:/etc/hyperledger/fabric-ca-server-config
+    container_name: ca.org1.example.com
+    networks:
+      - byfn
+
+  orderer0.example.com:
+    container_name: orderer0.example.com
+    image: hyperledger/fabric-orderer:$ARCH-1.1.0
+    environment:
+      - ORDERER_GENERAL_LOGLEVEL=debug
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_GENESISMETHOD=file
+      - ORDERER_GENERAL_GENESISFILE=/etc/hyperledger/configtx/composer-genesis.block
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/etc/hyperledger/msp/orderer/msp
+      - ORDERER_KAFKA_RETRY_SHORTINTERVAL=1s
+      - ORDERER_KAFKA_RETRY_SHORTTOTAL=30s
+      - ORDERER_KAFKA_VERBOSE=true
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric
+    command: orderer
+    ports:
+      - 7050:7050
+    volumes:
+        - ./:/etc/hyperledger/configtx
+        - ./crypto-config/ordererOrganizations/example.com/orderers/orderer0.example.com/msp:/etc/hyperledger/msp/orderer/msp
+    depends_on:
+      - kafka0.example.com
+      - kafka1.example.com
+    networks:
+      - byfn
+
+  orderer1.example.com:
+    container_name: orderer1.example.com
+    image: hyperledger/fabric-orderer:$ARCH-1.1.0
+    environment:
+      - ORDERER_GENERAL_LOGLEVEL=debug
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_GENESISMETHOD=file
+      - ORDERER_GENERAL_GENESISFILE=/etc/hyperledger/configtx/composer-genesis.block
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/etc/hyperledger/msp/orderer/msp
+      - ORDERER_KAFKA_RETRY_SHORTINTERVAL=1s
+      - ORDERER_KAFKA_RETRY_SHORTTOTAL=30s
+      - ORDERER_KAFKA_VERBOSE=true
+    volumes:
+        - ./:/etc/hyperledger/configtx
+        - ./crypto-config/ordererOrganizations/example.com/orderers/orderer1.example.com/msp:/etc/hyperledger/msp/orderer/msp
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric
+    command: orderer
+    ports:
+      - 8050:8050
+    depends_on:
+      - kafka0.example.com
+      - kafka1.example.com
+    networks:
+      - byfn
+
+
+  peer0.org1.example.com:
+    container_name: peer0.org1.example.com
+    image: hyperledger/fabric-peer:$ARCH-1.1.0
+    environment:
+      - CORE_LOGGING_LEVEL=debug
+      - CORE_CHAINCODE_LOGGING_LEVEL=DEBUG
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_PEER_ID=peer0.org1.example.com
+      - CORE_PEER_ADDRESS=peer0.org1.example.com:7051
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
+#      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=composer_default
+      - CORE_PEER_LOCALMSPID=Org1MSP
+      - CORE_PEER_MSPCONFIGPATH=/etc/hyperledger/peer/msp
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb:5984
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric
+    command: peer node start
+    ports:
+      - 7051:7051
+      - 7053:7053
+    volumes:
+        - /var/run/:/host/var/run/
+        - ./:/etc/hyperledger/configtx
+        - ./crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/msp:/etc/hyperledger/peer/msp
+        - ./crypto-config/peerOrganizations/org1.example.com/users:/etc/hyperledger/msp/users
+        - ./../../../org2-artifacts:/opt/gopath/src/github.com/hyperledger/fabric/org2-artifacts
+    depends_on:
+      - orderer0.example.com
+      - orderer1.example.com
+      - couchdb
+    networks:
+      - byfn
+
+  couchdb:
+    container_name: couchdb
+    image: hyperledger/fabric-couchdb
+    ports:
+      - 5984:5984
+    environment:
+      DB_URL: http://localhost:5984/member_db
+    networks:
+      - byfn
+
+
+  zookeeper0.example.com:
+    container_name: zookeeper0.example.com
+    extends:
+      file: kafka-base.yaml
+      service: zookeeper
+    environment:
+      - ZOO_MY_ID=1
+    ports:
+      - 2181:2181
+      - 2888:2888
+      - 3888:3888
+    networks:
+      - byfn
+
+  zookeeper1.example.com:
+    container_name: zookeeper1.example.com
+    extends:
+      file: kafka-base.yaml
+      service: zookeeper
+    environment:
+      - ZOO_MY_ID=2
+    ports:
+      - 12181:2181
+      - 12888:2888
+      - 13888:3888
+    networks:
+      - byfn
+
+  kafka0.example.com:
+    container_name: kafka0.example.com
+    extends:
+      file: kafka-base.yaml
+      service: kafka
+    environment:
+      - KAFKA_BROKER_ID=0
+    ports:
+      - 9092:9092
+      - 9093:9093
+    depends_on:
+      - zookeeper0.example.com
+      - zookeeper1.example.com
+    networks:
+      - byfn
+
+  kafka1.example.com:
+    container_name: kafka1.example.com
+    extends:
+      file: kafka-base.yaml
+      service: kafka
+    environment:
+      - KAFKA_BROKER_ID=1
+    ports:
+      - 10092:9092
+      - 10093:9093
+    depends_on:
+      - zookeeper0.example.com
+      - zookeeper1.example.com
+    networks:
+      - byfn
+ 
+  cli:
+    container_name: cli
+    image: hyperledger/fabric-tools:$ARCH-1.1.0
+    tty: true
+    environment:
+      - GOPATH=/opt/gopath
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_LOGGING_LEVEL=DEBUG
+      - CORE_PEER_ID=cli
+      - CORE_PEER_ADDRESS=peer0.org1.example.com:7051
+      - CORE_PEER_LOCALMSPID=Org1MSP
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    #command: /bin/bash -c 'sleep 1000'
+    volumes:
+        - /var/run/:/host/var/run/
+        - ./examples/chaincode/:/opt/gopath/src/github.com/chaincode
+        - ./crypto-config:/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/
+        - ./scripts:/opt/gopath/src/github.com/hyperledger/fabric/peer/scripts/
+        - ./channel-artifacts:/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts
+    networks:
+      - byfn
+    depends_on:
+      - orderer0.example.com
+      - orderer1.example.com
+      - peer0.org1.example.com
